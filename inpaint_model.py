@@ -19,11 +19,6 @@ from inpaint_ops import gen_conv, gen_deconv, dis_conv, gate_conv, gate_deconv
 from inpaint_ops import random_bbox, bbox2mask, local_patch, brush_stroke_mask
 from inpaint_ops import resize_mask_like, contextual_attention
 import numpy as np
-import matplotlib.pyplot as plt
-
-from PIL import Image
-
-
 
 logger = logging.getLogger()
 
@@ -80,7 +75,6 @@ class InpaintCAModel(Model):
             x7 = gate_conv(x7, 4 * cnum, 3, 1, rate=2, name='co_conv1_dlt')
             x7 = gate_conv(x7, 4 * cnum, 3, 1, rate=4, name='co_conv2_dlt')
             x7 = gate_conv(x7, 4 * cnum, 3, 1, rate=8, name='co_conv3_dlt')
-            # x7 = gate_conv(x7, 4 * cnum, 3, 1, rate=16, name='co_conv4_dlt')
             x7 = gate_conv(x7, 4 * cnum, 3, 1, rate=8, name='co_conv4_dlt')
             x7 = gate_conv(x7, 4 * cnum, 3, 1, rate=4, name='co_conv5_dlt')
             x7 = gate_conv(x7, 4 * cnum, 3, 1, rate=2, name='co_conv6_dlt')
@@ -267,34 +261,6 @@ class InpaintCAModel(Model):
                     batch_complete]
             else:
                 viz_img = [batch_pos, batch_incomplete, batch_complete]
-            # if offset_flow is not None:
-            #     viz_img.append(
-            #         resize(offset_flow, scale=4,
-            #                func=tf.image.resize_bilinear))
-
-            # if self.step % FLAGS.train_spe == 0:
-            #     epoch = FLAGS.max_iters / FLAGS.train_spe
-            #     # fake = tf.constant(batch_predicted)
-            #     # sess = tf.Session()
-            #     # sess.run(tf.global_variables_initializer())
-            #     # fake = batch_predicted.eval(session=sess)
-            #     # fake = tf.Session().run(batch_predicted)
-            #     # a = Image.fromarray(fake[0,:,:,0])
-            #     # vutils.save_image(batch_predicted,'./images/epoch_%03d_fake.png' % epoch,normalize=True)
-            #     # vutils.save_image(batch_data, './images/epoch_%03d_fake.png' % epoch,
-            #     #                   normalize=True)
-            #     step = '%d' % self.step
-            #     name = "fake_" + step
-            #     # img = tf.clip_by_value(batch_predicted * 255., 0, 255)
-            #     summary_image1 = tf.summary.image(name, batch_predicted, max_outputs=2)
-            #     name = "real_" + step
-            #     # img = tf.clip_by_value(batch_data * 255., 0, 255)
-            #     summary_image2 = tf.summary.image(name, batch_data, max_outputs=2)
-            #     summary_image = tf.summary.merge([summary_image1, summary_image2])
-            #     with tf.Session() as sess:
-            #         summary_write = tf.summary.FileWriter('./images', sess.graph)  # out_dir 为输出路径
-            #         summary_out = sess.run(summary_image)
-            #         summary_write.add_summary(summary_out)
             images_summary(
                 tf.concat(viz_img, axis=2),
                 'raw_incomplete_predicted_complete', FLAGS.viz_max_out)
