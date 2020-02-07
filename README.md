@@ -1,26 +1,14 @@
-# Generative Image Inpainting
-
-![version](https://img.shields.io/badge/version-v2.0.0-green.svg?style=plastic)
-![pytorch](https://img.shields.io/badge/tensorflow-v1.7.0-green.svg?style=plastic)
-![license](https://img.shields.io/badge/license-CC_BY--NC-green.svg?style=plastic)
-
-An open source framework for generative image inpainting task, with the support of [Contextual Attention](https://arxiv.org/abs/1801.07892) (CVPR 2018) and [Gated Convolution](https://arxiv.org/abs/1806.03589) (ICCV 2019 Oral).
-
-**For the code of previous version (DeepFill v1), please checkout branch [v1.0.0](https://github.com/JiahuiYu/generative_inpainting/tree/v1.0.0).**
-
-[CVPR 2018 Paper](https://arxiv.org/abs/1801.07892) | [ICCV 2019 Oral Paper](https://arxiv.org/abs/1806.03589) | [Project](http://jiahuiyu.com/deepfill) | [Demo](http://jiahuiyu.com/deepfill) | [YouTube v1](https://youtu.be/xz1ZvcdhgQ0) | [YouTube v2](https://youtu.be/uZkEi9Y2dj4) | [BibTex](#citing)
-
-<img src="https://raw.githubusercontent.com/JiahuiYu/generative_inpainting/v2.0.0/examples/places2/case1_raw.png" width="33%"/> <img src="https://raw.githubusercontent.com/JiahuiYu/generative_inpainting/v2.0.0/examples/places2/case1_input.png" width="33%"/> <img src="https://raw.githubusercontent.com/JiahuiYu/generative_inpainting/v2.0.0/examples/places2/case1_output.png" width="33%"/>
-<img src="https://raw.githubusercontent.com/JiahuiYu/generative_inpainting/v2.0.0/examples/places2/case4_raw.png" width="33%"/> <img src="https://raw.githubusercontent.com/JiahuiYu/generative_inpainting/v2.0.0/examples/places2/case4_input.png" width="33%"/> <img src="https://raw.githubusercontent.com/JiahuiYu/generative_inpainting/v2.0.0/examples/places2/case4_output.png" width="33%"/>
-
-Free-form image inpainting results by our system built on gated convolution. Each triad shows original image, free-form input and our result from left to right.
+# High accuracy interpolation of DEM using general adversarial network
+=
+This GitHub repository implements and evaluates a general adversarial method for Digital Elevation Model(DEM) interpolation with high resolution, which is an adaptation to the context of Digital Elevation Models (DEMs) from the method DeepFill v2 described in [1]. Pre-trained models are provided, as well as the DEMs used for the evaluation of the method.
+[1]J. Yu, Z. Lin, J. Yang, X. Shen, X. Lu, and T. S. Huang, “Free-Form Image Inpainting with Gated Convolution,” 2018.
 
 ## Run
 
 0. Requirements:
-    * Install python3.
+    * Install python3, ***.
     * Install [tensorflow](https://www.tensorflow.org/install/) (tested on Release 1.3.0, 1.4.0, 1.5.0, 1.6.0, 1.7.0).
-    * Install tensorflow toolkit [neuralgym](https://github.com/JiahuiYu/neuralgym) (run `pip install git+https://github.com/JiahuiYu/neuralgym`).
+    * Install tensorflow toolkit [neuralgym](https://github.com/JiahuiYu/neuralgym) (run `pip install git+https://github.com/JiahuiYu/neuralgym`), then substitute *** for *** in ***
 1. Training:
     * Prepare training images filelist and shuffle it ([example](https://github.com/JiahuiYu/generative_inpainting/issues/15)).
     * Modify [inpaint.yml](/inpaint.yml) to set DATA_FLIST, LOG_DIR, IMG_SHAPES and other parameters.
@@ -31,7 +19,7 @@ Free-form image inpainting results by our system built on gated convolution. Eac
 3. Testing:
     * Run `python test.py --image examples/input.png --mask examples/mask.png --output examples/output.png --checkpoint model_logs/your_model_dir`.
 4. Still have questions?
-    * If you still have questions (e.g.: How filelist looks like? How to use multi-gpus? How to do batch testing?), please first search over closed issues. If the problem is not solved, please open a new issue.
+    * If you still have questions (e.g.: How filelist looks like? How to use multi-gpus? How to do batch testing?), please first search over closed issues at https://github.com/JiahuiYu/generative_inpainting
 
 ## Pretrained models
 
