@@ -12,6 +12,7 @@ from neuralgym.ops.layers import *
 from neuralgym.ops.loss_ops import *
 from neuralgym.ops.gan_ops import *
 from neuralgym.ops.summary_ops import *
+import matplotlib.pyplot as plt
 
 
 logger = logging.getLogger()
@@ -361,9 +362,403 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     # flow = highlight_flow_tf(offsets * tf.cast(mask, tf.int32))
     if rate != 1:
         flow = resize(flow, scale=rate, func=tf.image.resize_bilinear)
+    flow = flow[:, :, :, 0:1]
     return y, flow
+# def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
+#                          fuse_k=3, softmax_scale=10., training=True, fuse=True):
+#     """ Contextual attention layer implementation.
+#
+#     Contextual attention is first introduced in publication:
+#         Generative Image Inpainting with Contextual Attention, Yu et al.
+#
+#     Args:
+#         x: Input feature to match (foreground).
+#         t: Input feature for match (background).
+#         mask: Input mask for t, indicating patches not available.
+#         ksize: Kernel size for contextual attention.
+#         stride: Stride for extracting patches from t.
+#         rate: Dilation for matching.
+#         softmax_scale: Scaled softmax for attention.
+#         training: Indicating if current graph is training or inference.
+#
+#     Returns:
+#         tf.Tensor: output
+#
+#     """
+#
+#     fig = plt.figure()
+#     fig1 = plt.figure()
+#     # get shapes
+#     raw_fs = tf.shape(f)
+#     raw_int_fs = f.get_shape().as_list()
+#     raw_int_bs = b.get_shape().as_list()
+#     # extract patches from background with stride and rate
+#     kernel = 2*rate
+#
+#     # images: 需要分成patch的原始图像。可以是4 - D张量（batch_size, weight, high, channels）
+#     # ksize: 一般是1 - D张量，length大于等于4，表示patch的大小，比如5 * 5, 则为（1，5，5，1）
+#     # strides表示一个补丁的开始与原始图像中下一个连续补丁的开始之间的间隙的长度
+#     # strides：类似于tf.conv2d里面的strides，表示步长，也就是一次滑动几个像素，如步长为2，则为（1，2，2，1）
+#     # padding： 填充方式，类似于tf.conv2d
+#     # rates: 是一个不容易理解的量，看了很久才搞明白。类似于空洞卷积，同一个patch里面隔几个点取为有效点
+#
+#     # 因为b输入是192x64x64,这里的输出应该是192x(64/2)x(64/2x4x4)为192x32x(32x16)
+#     raw_w = tf.extract_image_patches(
+#         b, [1,kernel,kernel,1], [1,rate*stride,rate*stride,1], [1,1,1,1], padding='SAME')
+#     # 16,-1,4,4,1,这里的理解就是得到了192张图片的n个4x4的小patch
+#     raw_w = tf.reshape(raw_w, [raw_int_bs[0], -1, kernel, kernel, raw_int_bs[3]])
+#     # 16,4,4,1,-1,
+#     raw_w = tf.transpose(raw_w, [0, 2, 3, 4, 1])  # transpose to b*k*k*c*hw
+#     # downscaling foreground option: downscaling both foreground and
+#     # background for matching and use original background for reconstruction.
+#     #2倍降采样
+#     f = resize(f, scale=1./rate, func=tf.image.resize_nearest_neighbor)
+#     b = resize(b, to_shape=[int(raw_int_bs[1]/rate), int(raw_int_bs[2]/rate)], func=tf.image.resize_nearest_neighbor)  # https://github.com/tensorflow/tensorflow/issues/11651
+#
+#     if mask is not None:
+#         mask = resize(mask, scale=1./rate, func=tf.image.resize_nearest_neighbor)
+#     fs = tf.shape(f)
+#     int_fs = f.get_shape().as_list()
+#     f_groups = tf.split(f, int_fs[0], axis=0)
+#     # from t(H*W*C) to w(b*k*k*c*h*w)
+#     bs = tf.shape(b)
+#     int_bs = b.get_shape().as_list()
+#     # ksize=3,这里的b是用rate降采样的
+#     w = tf.extract_image_patches(
+#         b, [1,ksize,ksize,1], [1,stride,stride,1], [1,1,1,1], padding='SAME')
+#     w = tf.reshape(w, [int_fs[0], -1, ksize, ksize, int_fs[3]])
+#     w = tf.transpose(w, [0, 2, 3, 4, 1])  # transpose to b*k*k*c*hw
+#
+#     ax = fig1.add_subplot(224)
+#     tmp = mask[0, :, :, 0:1]
+#     max = tf.reduce_max(tmp)
+#     min = tf.reduce_min(tmp)
+#     # 内存溢出跑不出来
+#     tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#     tmp = np.array((tmp)).astype(np.uint8)
+#     tmp = np.repeat(tmp, 3, axis=2)
+#     ax.imshow(tmp)
+#     ax.set_title('original_mask')
+#     # process mask
+#     if mask is None:
+#         mask = tf.zeros([1, bs[1], bs[2], 1])
+#     m = tf.extract_image_patches(
+#         mask, [1,ksize,ksize,1], [1,stride,stride,1], [1,1,1,1], padding='SAME')
+#     m = tf.reshape(m, [1, -1, ksize, ksize, 1])
+#     m = tf.transpose(m, [0, 2, 3, 4, 1])  # transpose to b*k*k*c*hw
+#     m = m[0]
+#     # mm = tf.reduce_mean(m, axis=[0,1,2], keep_dims=True)
+#     mm = tf.cast(tf.equal(tf.reduce_mean(m, axis=[0,1,2], keep_dims=True), 0.), tf.float32)
+#     w_groups = tf.split(w, int_bs[0], axis=0)
+#     raw_w_groups = tf.split(raw_w, int_bs[0], axis=0)
+#     y = []
+#     offsets = []
+#     # fuse_k=3
+#     k = fuse_k
+#     scale = softmax_scale
+#     fuse_weight = tf.reshape(tf.eye(k), [k, k, 1, 1])
+#     # w = tf.extract_image_patches(
+#     #         b, [1,ksize,ksize,1], [1,stride,stride,1], [1,1,1,1], padding='SAME')
+#     for xi, wi, raw_wi in zip(f_groups, w_groups, raw_w_groups):# 192
+#         # conv for compare
+#         wi = wi[0]
+#         # 相当于是对patch平方再求和再开方，再与1e-4相比较，取最大，for循环就是对每个batch的意思
+#         # l2
+#         wi_normed = wi / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(wi), axis=[0,1,2])), 1e-4)
+#         # wi_normed是卷积核，shape为 [ filter_height, filter_weight, in_channel, out_channels ]
+#         # k*k*c*hw 所以yi是被卷积成前面的patch个数的通道，相当于是在192的1的基础上又做了一次通道切分一样
+#         # hw=128*128
+#
+#         ax = fig.add_subplot(441)
+#         # tmp=np.repeat(tf.Session().run(xi)[0],3,axis=2)
+#         # tmp = np.repeat(tmp, 3, axis=2)
+#         # 必须要转成uint8才能正常显示
+#         tmp = np.repeat(np.array((tf.Session().run(xi)[0]+1)*127.5).astype(np.uint8), 3, axis=2)
+#         ax.imshow(tmp)
+#         ax.set_title('original')
+#
+#         yi = tf.nn.conv2d(xi, wi_normed, strides=[1,1,1,1], padding="SAME")
+#         ax = fig.add_subplot(442)
+#         tmp = yi[0,:,:,0:1]
+#         max = tf.reduce_max(tmp)
+#         min = tf.reduce_min(tmp)
+#         # 内存溢出跑不出来
+#         tmp = (tf.Session().run((tmp-min)/(max-min))*255)
+#         tmp = np.array((tmp)).astype(np.uint8)
+#         tmp = np.repeat(tmp, 3, axis=2)
+#         ax.imshow(tmp)
+#         ax.set_title('yi')
+#
+#
+#         # conv implementation for fuse scores to encourage large patches
+#         if fuse:# 目前由于fuse_weight为1.相当于是直接求均值，所以看起来这里主要是转置又转置，是transpose_conv
+#             # yi [128,128,128*128]
+#             yi = tf.reshape(yi, [1, fs[1]*fs[2], bs[1]*bs[2], 1])
+#             ax = fig.add_subplot(443)
+#             tmp = yi[0, :, :, 0:1]
+#             max = tf.reduce_max(tmp)
+#             min = tf.reduce_min(tmp)
+#             # 内存溢出跑不出来
+#             tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#             tmp = np.array((tmp)).astype(np.uint8)
+#             tmp = np.repeat(tmp, 3, axis=2)
+#             ax.imshow(tmp)
+#             ax.set_title('yi_big')
+#             # fuse_weight为1
+#             yi = tf.nn.conv2d(yi, fuse_weight, strides=[1,1,1,1], padding='SAME')
+#             # 相当于是行列做交换，然后一组是128，分了128个小组，4,3交换的意思就是把小组里面的取出来分别放到128个组中，形成新的128组
+#
+#             yi = tf.reshape(yi, [1, fs[1], fs[2], bs[1], bs[2]])
+#             ax = fig.add_subplot(444)
+#             # ax.imshow(yi[0, :, :, 0:1,0])
+#             tmp = yi[0, :, :, 0:1,0]
+#             max = tf.reduce_max(tmp)
+#             min = tf.reduce_min(tmp)
+#             # 内存溢出跑不出来
+#             tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#             tmp = np.array((tmp)).astype(np.uint8)
+#             tmp = np.repeat(tmp, 3, axis=2)
+#             ax.imshow(tmp)
+#             ax.set_title('yi_fuse1')
+#             # 这里有点像转置操作
+#             yi = tf.transpose(yi, [0, 2, 1, 4, 3])
+#             ax = fig.add_subplot(445)
+#             # ax.imshow(yi[0,:,:,0:1,0])
+#             tmp = yi[0,:,:,0:1,0]
+#             max = tf.reduce_max(tmp)
+#             min = tf.reduce_min(tmp)
+#             # 内存溢出跑不出来
+#             tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#             tmp = np.array((tmp)).astype(np.uint8)
+#             tmp = np.repeat(tmp, 3, axis=2)
+#             ax.imshow(tmp)
+#             ax.set_title('yi_fusetranspose')
+#             # 这里的reshape就是伸展开，不过因为前面的转置操作，现在这里行列互换，128与128重新排列，图像看来应该会很不一样
+#             yi = tf.reshape(yi, [1, fs[1]*fs[2], bs[1]*bs[2], 1])
+#             yi = tf.nn.conv2d(yi, fuse_weight, strides=[1,1,1,1], padding='SAME')
+#
+#             yi = tf.reshape(yi, [1, fs[2], fs[1], bs[2], bs[1]])
+#             ax = fig.add_subplot(446)
+#             tmp = yi[0, :, :, 0:1, 0]
+#             max = tf.reduce_max(tmp)
+#             min = tf.reduce_min(tmp)
+#             # 内存溢出跑不出来
+#             tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#             tmp = np.array((tmp)).astype(np.uint8)
+#             tmp = np.repeat(tmp, 3, axis=2)
+#             ax.imshow(tmp)
+#             ax.set_title('yi_fuse2')
+#             yi = tf.transpose(yi, [0, 2, 1, 4, 3])
+#             # ax.set_title('yi_fusetransposefusetranspose')
+#         yi = tf.reshape(yi, [1, fs[1], fs[2], bs[1]*bs[2]])
+#         ax = fig.add_subplot(447)
+#         tmp = yi[0, :, :, 0:1]
+#         max = tf.reduce_max(tmp)
+#         min = tf.reduce_min(tmp)
+#         # 内存溢出跑不出来
+#         tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#         tmp = np.array((tmp)).astype(np.uint8)
+#         tmp = np.repeat(tmp, 3, axis=2)
+#         ax.imshow(tmp)
+#         ax.set_title('yi_128x128个')
+#
+#         # softmax to match
+#         # 加掩模
+#         yi *=  mm  # mask
+#         ax = fig.add_subplot(448)
+#         # ax.imshow(yi[0, :, :, 0:1])
+#         tmp = yi[0, :, :, 0:1]
+#         max = tf.reduce_max(tmp)
+#         min = tf.reduce_min(tmp)
+#         # 内存溢出跑不出来
+#         tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#         tmp = np.array((tmp)).astype(np.uint8)
+#         tmp = np.repeat(tmp, 3, axis=2)
+#         ax.imshow(tmp)
+#         ax.set_title('yi_withmask')
+#         ax = fig.add_subplot(449)
+#         # ax.imshow(yi[0, :, :, 0:1])
+#         tmp = mm[0, :, :, 0:1]
+#         max = tf.reduce_max(tmp)
+#         min = tf.reduce_min(tmp)
+#         # 内存溢出跑不出来
+#         tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#         tmp = np.array((tmp)).astype(np.uint8)
+#         tmp = np.repeat(tmp, 3, axis=2)
+#         ax.imshow(tmp)
+#         ax.set_title('mask')
+#         # softmax有放大较大值的作用，因为有exp
+#         # 这里是在axis=3上面求和，相当于是在在通道上面归一化到（0,1）
+#         yi = tf.nn.softmax(yi*scale, 3)
+#
+#         ax = fig1.add_subplot(221)
+#         # ax.imshow(yi[0, :, :, 0:1])
+#         tmp = yi[0, :, :, 0:1]
+#         max = tf.reduce_max(tmp)
+#         min = tf.reduce_min(tmp)
+#         # 内存溢出跑不出来
+#         tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#         tmp = np.array((tmp)).astype(np.uint8)
+#         tmp = np.repeat(tmp, 3, axis=2)
+#         ax.imshow(tmp)
+#         ax.set_title('yi_withmasksoftmax')
+#
+#         yi *=  mm  # mask
+#         ax = fig1.add_subplot(222)
+#         # ax.imshow(yi[0, :, :, 0:1])
+#         tmp = yi[0, :, :, 0:1]
+#         max = tf.reduce_max(tmp)
+#         min = tf.reduce_min(tmp)
+#         # 内存溢出跑不出来
+#         tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#         tmp = np.array((tmp)).astype(np.uint8)
+#         tmp = np.repeat(tmp, 3, axis=2)
+#         ax.imshow(tmp)
+#         ax.set_title('yi_withmasksoftmaxmask')
+#         # 找通道上面最大的yi，其实就是返回每个通道上的二维矩阵的行方向上的最大值位置索引
+#         offset = tf.argmax(yi, axis=3, output_type=tf.int32)
+#         offset = tf.stack([offset // fs[2], offset % fs[2]], axis=-1)
+#         # deconv for patch pasting
+#         # 3.1 paste center
+#         # 然后又用原图的patch做卷积，这样一来又恢复到了原来的通道数
+#         wi_center = raw_wi[0]
+#         # deconvolution
+#         yi = tf.nn.conv2d_transpose(yi, wi_center, tf.concat([[1], raw_fs[1:]], axis=0), strides=[1,rate,rate,1]) / 4.
+#         ax = fig1.add_subplot(223)
+#         # ax.imshow(yi[0, :, :, 0:1])
+#         tmp = yi[0, :, :, 0:1]
+#         max = tf.reduce_max(tmp)
+#         min = tf.reduce_min(tmp)
+#         # 内存溢出跑不出来
+#         tmp = (tf.Session().run((tmp - min) / (max - min)) * 255)
+#         tmp = np.array((tmp)).astype(np.uint8)
+#         tmp = np.repeat(tmp, 3, axis=2)
+#         ax.imshow(tmp)
+#         ax.set_title('yi_deconvo')
+#         y.append(yi)
+#         offsets.append(offset)
+#     # 这里恢复到了输入的通道数
+#     y = tf.concat(y, axis=0)
+#     y.set_shape(raw_int_fs)
+#     offsets = tf.concat(offsets, axis=0)
+#     offsets.set_shape(int_bs[:3] + [2])
+#     # case1: visualize optical flow: minus current position
+#     # 扩张成128*128，包含的是0-127这些数
+#     # offset是索引的意思
+#     h_add = tf.tile(tf.reshape(tf.range(bs[1]), [1, bs[1], 1, 1]), [bs[0], 1, bs[2], 1])
+#     w_add = tf.tile(tf.reshape(tf.range(bs[2]), [1, 1, bs[2], 1]), [bs[0], bs[1], 1, 1])
+#     # 这里第2维第3维都不一样是怎么连接的
+#     offsets = offsets - tf.concat([h_add, w_add], axis=3)
+#     # to flow image
+#     flow = flow_to_image_tf(offsets)
+#     # # case2: visualize which pixels are attended
+#     # flow = highlight_flow_tf(offsets * tf.cast(mask, tf.int32))
+#     if rate != 1:
+#         # 之前得到的flow是降采样的
+#         flow = resize(flow, scale=rate, func=tf.image.resize_bilinear)
+#     fig.show()
+#     fig1.show()
+#     return y, flow
+#
+# @add_arg_scope
+# def gate_conv(x_in, cnum, ksize, stride=1, rate=1, name='conv',
+#              padding='SAME', activation='leaky_relu', use_lrn=True,training=True):
+#     assert padding in ['SYMMETRIC', 'SAME', 'REFELECT']
+#     if padding == 'SYMMETRIC' or padding == 'REFELECT':
+#         p = int(rate*(ksize-1)/2)
+#         x = tf.pad(x_in, [[0,0], [p, p], [p, p], [0,0]], mode=padding)
+#         padding = 'VALID'
+#     x = tf.layers.conv2d(
+#         x_in, cnum, ksize, stride, dilation_rate=rate,
+#         activation=None, padding=padding, name=name)
+#     if use_lrn:
+#         x = tf.nn.lrn(x, bias=0.00005)
+#     if activation=='leaky_relu':
+#         x = tf.nn.leaky_relu(x)
+#
+#     g = tf.layers.conv2d(
+#         x_in, cnum, ksize, stride, dilation_rate=rate,
+#         activation=tf.nn.sigmoid, padding=padding, name=name+'_g')
+#
+#     x = tf.multiply(x,g)
+#     return x, g
+#
+# @add_arg_scope
+# def gate_deconv(input_, output_shape, k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
+#        name="deconv", training=True):
+#     with tf.variable_scope(name):
+#         # filter : [height, width, output_channels, in_channels]
+#         w1 = tf.get_variable('w1', [k_h, k_w, output_shape[-1], input_.get_shape()[-1]],
+#                   initializer=tf.random_normal_initializer(stddev=stddev))
+#
+#         deconv = tf.nn.conv2d_transpose(input_, w1, output_shape=output_shape,
+#                     strides=[1, d_h, d_w, 1])
+#
+#         biases = tf.get_variable('biases1', [output_shape[-1]], initializer=tf.constant_initializer(0.0))
+#         deconv = tf.reshape(tf.nn.bias_add(deconv, biases), deconv.get_shape())
+#         deconv = tf.nn.leaky_relu(deconv)
+#
+#         w2 = tf.get_variable('w2', [k_h, k_w, output_shape[-1], input_.get_shape()[-1]],
+#                              initializer=tf.random_normal_initializer(stddev=stddev))
+#         g = tf.nn.conv2d_transpose(input_, w2, output_shape=output_shape,
+#                     strides=[1, d_h, d_w, 1])
+#         b = tf.get_variable('biases2', [output_shape[-1]], initializer=tf.constant_initializer(0.0))
+#         g = tf.reshape(tf.nn.bias_add(g, b), deconv.get_shape())
+#         g = tf.nn.sigmoid(g)
+#
+#         deconv = tf.multiply(g,deconv)
+#
+#         return deconv, g
 
+@add_arg_scope
+def gate_conv(x_in, cnum, ksize, stride=1, rate=1, name='conv',
+             padding='SAME', activation='leaky_relu', use_lrn=True,training=True):
+    assert padding in ['SYMMETRIC', 'SAME', 'REFELECT']
+    if padding == 'SYMMETRIC' or padding == 'REFELECT':
+        p = int(rate*(ksize-1)/2)
+        x = tf.pad(x_in, [[0,0], [p, p], [p, p], [0,0]], mode=padding)
+        padding = 'VALID'
+    x = tf.layers.conv2d(
+        x_in, cnum, ksize, stride, dilation_rate=rate,
+        activation=None, padding=padding, name=name)
+    if use_lrn:
+        x = tf.nn.lrn(x, bias=0.00005)
+    if activation=='leaky_relu':
+        x = tf.nn.leaky_relu(x)
 
+    # g = tf.layers.conv2d(
+    #     x_in, cnum, ksize, stride, dilation_rate=rate,
+    #     activation=tf.nn.sigmoid, padding=padding, name=name+'_g')
+    #
+    # x = tf.multiply(x,g)
+    return x#, g
+
+@add_arg_scope
+def gate_deconv(input_, output_shape, k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
+       name="deconv", training=True):
+    with tf.variable_scope(name):
+        # filter : [height, width, output_channels, in_channels]
+        w1 = tf.get_variable('w1', [k_h, k_w, output_shape[-1], input_.get_shape()[-1]],
+                  initializer=tf.random_normal_initializer(stddev=stddev))
+
+        deconv = tf.nn.conv2d_transpose(input_, w1, output_shape=output_shape,
+                    strides=[1, d_h, d_w, 1])
+
+        biases = tf.get_variable('biases1', [output_shape[-1]], initializer=tf.constant_initializer(0.0))
+        deconv = tf.reshape(tf.nn.bias_add(deconv, biases), deconv.get_shape())
+        deconv = tf.nn.leaky_relu(deconv)
+
+        # w2 = tf.get_variable('w2', [k_h, k_w, output_shape[-1], input_.get_shape()[-1]],
+        #                      initializer=tf.random_normal_initializer(stddev=stddev))
+        # g = tf.nn.conv2d_transpose(input_, w2, output_shape=output_shape,
+        #             strides=[1, d_h, d_w, 1])
+        # b = tf.get_variable('biases2', [output_shape[-1]], initializer=tf.constant_initializer(0.0))
+        # g = tf.reshape(tf.nn.bias_add(g, b), deconv.get_shape())
+        # g = tf.nn.sigmoid(g)
+        #
+        # deconv = tf.multiply(g,deconv)
+
+        return deconv#, g
 def test_contextual_attention(args):
     """Test contextual attention layer with 3-channel image input
     (instead of n-channel feature).
