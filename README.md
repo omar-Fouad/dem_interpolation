@@ -1,5 +1,5 @@
 # High accuracy interpolation of DEM using general adversarial network
-=
+
 This GitHub repository implements and evaluates a general adversarial method for Digital Elevation Model(DEM) interpolation with high resolution, which is an adaptation to the context of Digital Elevation Models (DEMs) from the method DeepFill v2 described in [1]. Pre-trained models are provided, as well as the DEMs used for the evaluation of the method.
 [1]J. Yu, Z. Lin, J. Yang, X. Shen, X. Lu, and T. S. Huang, “Free-Form Image Inpainting with Gated Convolution,” 2018.
 
